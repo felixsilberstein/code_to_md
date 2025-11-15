@@ -21,7 +21,7 @@ def main(
     input_dir: str,
     output: str = "output/combined.md",
     separate: bool = False,
-    target_formats: Iterable[str] = (".py",),
+    target_formats: Iterable[str] = (".py", ".js", ".jsx", ".ts", ".tsx", ".json"),
     gitignore: bool = False,
 ):
     """Convert files under `input_dir` and write Markdown.
@@ -40,12 +40,39 @@ def main(
         return {
             ".py": "python",
             ".js": "javascript",
+            ".jsx": "jsx",
             ".ts": "typescript",
+            # .tsx handled by _choose_language heuristic (JSX vs TS)
+            ".tsx": "tsx",
             ".java": "java",
             ".c": "c",
             ".cpp": "cpp",
             ".go": "go",
+            ".json": "json",
+            ".css": "css",
+            ".html": "html",
         }.get(suffix.lower(), "")
+
+    def _choose_language(file_path: Path, suffix: str) -> str:
+        """Choose a language hint for code fences.
+
+        For `.tsx` files attempt to detect JSX usage by scanning the file for
+        common JSX patterns; if found return `tsx`, otherwise return
+        `typescript` to favor TS highlighting for plain TSX files without JSX.
+        """
+        s = suffix.lower()
+        if s == ".tsx":
+            try:
+                txt = file_path.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                txt = ""
+
+            # Simple heuristics for JSX: angle-bracket start of an element, JSX fragment `<>`,
+            # or `return (<` patterns inside functions/components.
+            if re.search(r"<\s*[A-Za-z]", txt) or "<>" in txt or re.search(r"return\s*\(\s*<", txt):
+                return "tsx"
+            return "typescript"
+
 
     def _safe_fence(text: str) -> str:
         """Return a fence string (backticks) that is longer than any run
@@ -61,7 +88,7 @@ def main(
         output_path.suffix.lower() == ".md" or output_path.name.lower().endswith(".md")
     )
 
-    def _load_gitignore_spec(base: Path) -> Optional[PathSpec]:
+    def _load_gitignore_spec(base: Path) -> Optional[object]:
         gitfile = base / ".gitignore"
         if not gitfile.exists():
             return None
@@ -175,7 +202,7 @@ def main(
                     # If the converter already provided a top-level code fence, don't double-wrap
                     if not re.match(r"^\s*(```|~~~)", content):
                         fence = _safe_fence(content)
-                        lang = _language_for_suffix(file_path.suffix)
+                        lang = _choose_language(file_path, file_path.suffix)
                         lang_hint = f"{lang}" if lang else ""
                         out_f.write(f"{fence}{lang_hint}\n")
                         out_f.write(content)
@@ -225,7 +252,7 @@ def main(
                 # Wrap per-file output similarly (skip if already fenced)
                 if not re.match(r"^\s*(```|~~~)", content):
                     fence = _safe_fence(content)
-                    lang = _language_for_suffix(file_path.suffix)
+                    lang = _choose_language(file_path, file_path.suffix)
                     lang_hint = f"{lang}" if lang else ""
                     wrapped = f"{fence}{lang_hint}\n" + content + f"\n{fence}\n"
                 else:
@@ -265,8 +292,8 @@ def _parse_args():
         "--ext",
         "-e",
         nargs="+",
-        default=[".py"],
-        help="File extensions to include (e.g. .py .js). Defaults to .py",
+        default=[".py", ".js", ".jsx", ".ts", ".tsx", ".json"],
+        help="File extensions to include (e.g. .py .js .ts .tsx). Defaults to a set including Python, JS and TS/TSX files",
     )
 
     return parser.parse_args()
