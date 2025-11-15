@@ -12,7 +12,8 @@ like "Batch convert source files to Markdown using markitdown".
 - Purpose: Batch-convert source files (default `.py`) into Markdown using
   `markitdown`. By default it writes a single combined Markdown file with a
   `## <relative/path>` header for each source file and safe fenced code blocks.
-- CLI flags: `--separate`, `--gitignore`, `-e/--ext`, `-o/--output`.
+- Includes a folder tree structure at the beginning of combined output or as a separate `.tree.md` file.
+- CLI flags: `--separate`, `--gitignore`, `-e/--ext`, `-o/--output`, `--no-tree`.
 
 ## Usage (gist README snippet)
 

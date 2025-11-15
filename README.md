@@ -14,9 +14,8 @@ publish this tool as a small public project or run it locally.
 - Safe code fencing (avoids collisions with backticks inside source)
 - Language hints for common file extensions (e.g. `.py` → `python`)
 - Optional light `.gitignore` support to skip files
- - Supports web projects including React + TypeScript (`.ts`, `.tsx`, `.js`, `.jsx`)
-
-## Quick start
+- Supports web projects including React + TypeScript (`.ts`, `.tsx`, `.js`, `.jsx`)
+- Includes a folder tree structure at the beginning of combined output (or as `.tree.md` in separate mode)## Quick start
 
 1. Create and activate a Python virtual environment:
 

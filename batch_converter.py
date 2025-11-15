@@ -23,6 +23,7 @@ def main(
     separate: bool = False,
     target_formats: Iterable[str] = (".py", ".js", ".jsx", ".ts", ".tsx", ".json"),
     gitignore: bool = False,
+    include_tree: bool = True,
 ):
     """Convert files under `input_dir` and write Markdown.
 
@@ -30,6 +31,9 @@ def main(
     files are appended into that single Markdown file with a heading containing
     the file path. If `output` is a directory, individual `.md` files are
     written there (backwards compatible behavior).
+
+    If `include_tree` is True (default), a folder tree structure is prepended
+    to combined output or written as a separate `.tree.md` file in separate mode.
     """
     input_path = Path(input_dir)
     md = MarkItDown()
@@ -116,6 +120,42 @@ def main(
 
     gitignore_spec = _load_gitignore_spec(input_path) if gitignore else None
 
+    def _build_tree(base_path: Path, prefix: str = "", max_depth: int = 20, current_depth: int = 0) -> List[str]:
+        """Recursively build a tree representation of directories and matched files.
+        Returns a list of strings representing tree lines.
+        """
+        if current_depth > max_depth:
+            return []
+        lines = []
+        try:
+            items = sorted(base_path.iterdir())
+        except (PermissionError, OSError):
+            return lines
+
+        dirs = []
+        files = []
+        for item in items:
+            if item.is_dir():
+                # Skip hidden and common ignored dirs
+                if item.name.startswith(".") or item.name in ("node_modules", "__pycache__", ".venv", "venv"):
+                    continue
+                dirs.append(item)
+            elif item.is_file() and item.suffix in target_formats:
+                files.append(item)
+
+        # Show files first, then directories
+        for i, f in enumerate(files):
+            is_last = (i == len(files) - 1) and len(dirs) == 0
+            lines.append(f"{prefix}{'└── ' if is_last else '├── '}{f.name}")
+
+        for i, d in enumerate(dirs):
+            is_last = i == len(dirs) - 1
+            lines.append(f"{prefix}{'└── ' if is_last else '├── '}{d.name}/")
+            extension = "    " if is_last else "│   "
+            lines.extend(_build_tree(d, prefix + extension, max_depth, current_depth + 1))
+
+        return lines
+
     def _convert_with_fallback(src_path: Path):
         """Try to convert using MarkItDown; on decode errors create a temporary
         UTF-8-safe copy (with replacement) and convert that, cleaning up after.
@@ -161,6 +201,15 @@ def main(
     if combined_mode:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with output_path.open("w", encoding="utf-8") as out_f:
+            # Write tree at the beginning if requested
+            if include_tree:
+                out_f.write("# Folder Structure\n\n")
+                out_f.write("```\n")
+                tree_lines = _build_tree(input_path)
+                out_f.write(f"{input_path.name}/\n")
+                out_f.write("\n".join(tree_lines))
+                out_f.write("\n```\n\n---\n\n")
+
             for file_path in input_path.rglob("*"):
                 if file_path.suffix in target_formats:
                     try:
@@ -215,6 +264,19 @@ def main(
         # Directory mode (previous behavior)
         output_dir = output_path
         output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Write tree as a separate file if requested
+        if include_tree:
+            tree_file = output_dir / ".tree.md"
+            with tree_file.open("w", encoding="utf-8") as tf:
+                tf.write("# Folder Structure\n\n")
+                tf.write("```\n")
+                tree_lines = _build_tree(input_path)
+                tf.write(f"{input_path.name}/\n")
+                tf.write("\n".join(tree_lines))
+                tf.write("\n```\n")
+            print(f"✓ Wrote folder tree to {tree_file.name}")
+
         for file_path in input_path.rglob("*"):
             if file_path.suffix in target_formats:
                 try:
@@ -295,6 +357,11 @@ def _parse_args():
         default=[".py", ".js", ".jsx", ".ts", ".tsx", ".json"],
         help="File extensions to include (e.g. .py .js .ts .tsx). Defaults to a set including Python, JS and TS/TSX files",
     )
+    parser.add_argument(
+        "--no-tree",
+        action="store_true",
+        help="Skip folder tree structure output (by default, tree is included).",
+    )
 
     return parser.parse_args()
 
@@ -303,4 +370,4 @@ if __name__ == "__main__":
     args = _parse_args()
     # Normalize extensions to start with a dot
     exts = tuple(e if e.startswith(".") else f".{e}" for e in args.ext)
-    main(args.input_dir, output=args.output, separate=args.separate, target_formats=exts)
+    main(args.input_dir, output=args.output, separate=args.separate, target_formats=exts, gitignore=args.gitignore, include_tree=not args.no_tree)
